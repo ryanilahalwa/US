@@ -37,3 +37,13 @@ pnpm build
 ```
 
 The production health endpoint remains `/api/health`. A healthy deployment should report a reachable database after the deployment environment has supplied `DATABASE_URL` and the other documented secrets.
+
+## Orbit Keepsakes additions
+
+The Feature Hub now includes **Surprise Drops**, which let one participant write a private message, quote, and optional shared-memory reference for the other participant to discover after a chosen future date. Surprise content is filtered server-side until its reveal time, and only the recipient can open it.
+
+**Our Places** stores meaningful place names, optional addresses, optional coordinates, visit dates, notes, and privacy choices. Coordinates are optional, map pins are only rendered for places with coordinates, and private places remain visible only to their creator. The map uses the existing MapView integration and does not enable continuous location tracking.
+
+**Private Anniversary Mode** computes the next anniversary from the relationship start date and gathers visible favorites, album milestones, and saved traditions into a private recap. It is read-only and computed from existing relationship data, so it requires no background scheduler.
+
+These additions are relationship-scoped, protected by the existing authentication and membership checks, and are included in migration `0008_serious_weapon_omega.sql`. The migration runs only when a future deployment is authorized; the current live deployment is not changed automatically.

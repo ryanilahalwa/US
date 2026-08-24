@@ -43,6 +43,27 @@
       "when": 1787531944376,
       "tag": "0005_great_night_nurse",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787614031330,
+      "tag": "0006_smooth_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787614679612,
+      "tag": "0007_fat_menace",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1787615149084,
+      "tag": "0008_serious_weapon_omega",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gt, isNotNull, isNull, lte, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, like, lte, ne, or } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
@@ -16,6 +16,16 @@ import {
   notifications,
   relationshipInvites,
   relationshipMembers,
+  galleryAlbums,
+  galleryAlbumMilestones,
+  memoryCapsules,
+  surpriseDrops,
+  relationshipPlaces,
+  promptResponses,
+  rituals,
+  momentReplies,
+  momentComparisons,
+  traditions,
   relationships,
   users,
   wellnessEntries,
@@ -141,6 +151,14 @@ function fileExtension(filename: string, mimeType: string) {
   return `${sanitized || "memory"}${extensions[mimeType] ?? ""}`;
 }
 
+function nextRitualDate(cadence: "daily" | "weekly" | "monthly", from = new Date()) {
+  const next = new Date(from);
+  if (cadence === "daily") next.setDate(next.getDate() + 1);
+  else if (cadence === "weekly") next.setDate(next.getDate() + 7);
+  else next.setMonth(next.getMonth() + 1);
+  return next;
+}
+
 export const orbitRouter = router({
   relationship: router({
     get: protectedProcedure.query(async ({ ctx }) => {
@@ -241,16 +259,20 @@ export const orbitRouter = router({
       const prepared = await storagePreparePut(`orbit/${current.relationship.id}/moments/${ctx.user.id}-${Date.now()}-${fileExtension(input.filename, input.mimeType)}`, input.mimeType);
       return { ...prepared, mediaType: input.mimeType.startsWith("video/") ? "video" as const : "photo" as const };
     }),
-    create: protectedProcedure.input(z.object({ filename: z.string().min(1).max(160), mimeType: z.enum([...imageMimeTypes, ...videoMimeTypes]), fileKey: z.string().min(1).max(512), mediaUrl: z.string().min(1).max(1024), caption: z.string().trim().max(500).optional(), visibility: z.enum(["pair", "private"]).default("pair"), favorite: z.boolean().default(false), fileSizeBytes: z.number().int().min(0).max(100_000_000).optional(), occurredAt: z.coerce.date() })).mutation(async ({ ctx, input }) => {
+    create: protectedProcedure.input(z.object({ filename: z.string().min(1).max(160), mimeType: z.enum([...imageMimeTypes, ...videoMimeTypes]), fileKey: z.string().min(1).max(512), mediaUrl: z.string().min(1).max(1024), caption: z.string().trim().max(500).optional(), quote: z.string().trim().max(280).optional(), albumId: z.number().int().positive().optional(), songTitle: z.string().trim().max(160).optional(), songArtist: z.string().trim().max(160).optional(), songUrl: z.string().url().max(1024).optional(), visibility: z.enum(["pair", "private"]).default("pair"), favorite: z.boolean().default(false), fileSizeBytes: z.number().int().min(0).max(100_000_000).optional(), occurredAt: z.coerce.date() })).mutation(async ({ ctx, input }) => {
       const db = await requireDatabase();
       const current = await requireMembership(db, ctx.user.id);
       const expectedPrefix = `orbit/${current.relationship.id}/moments/`;
       if (!input.fileKey.startsWith(expectedPrefix) || ![`/media/${input.fileKey}`, `/manus-storage/${input.fileKey}`].includes(input.mediaUrl)) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "The uploaded file does not belong to this private orbit." });
       }
+      if (input.albumId) {
+        const album = await db.select({ id: galleryAlbums.id }).from(galleryAlbums).where(and(eq(galleryAlbums.id, input.albumId), eq(galleryAlbums.relationshipId, current.relationship.id))).limit(1);
+        if (!album[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That private album is not available." });
+      }
       const mediaType = input.mimeType.startsWith("video/") ? "video" : "photo";
-      await db.insert(moments).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, mediaType, fileKey: input.fileKey, mediaUrl: input.mediaUrl, caption: input.caption || null, visibility: input.visibility, favorite: input.favorite, fileSizeBytes: input.fileSizeBytes ?? null, occurredAt: input.occurredAt });
-      await notifyPartner(db, current.relationship.id, ctx.user.id, "memories", "moment", "A new memory was added", input.caption || "A private moment is waiting in your orbit.", "/moments");
+      await db.insert(moments).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, mediaType, fileKey: input.fileKey, mediaUrl: input.mediaUrl, caption: input.caption || null, quote: input.quote || null, albumId: input.albumId ?? null, songTitle: input.songTitle || null, songArtist: input.songArtist || null, songUrl: input.songUrl || null, visibility: input.visibility, favorite: input.favorite, fileSizeBytes: input.fileSizeBytes ?? null, occurredAt: input.occurredAt });
+      await notifyPartner(db, current.relationship.id, ctx.user.id, "memories", "moment", "A new memory was added", input.caption || input.quote || "A private moment is waiting in your orbit.", "/moments");
       return { success: true };
     }),
     toggleFavorite: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -271,11 +293,24 @@ export const orbitRouter = router({
       else await db.insert(momentReactions).values({ relationshipId: current.relationship.id, momentId: input.id, userId: ctx.user.id, kind: input.kind });
       return { active: !existing[0] };
     }),
-    update: protectedProcedure.input(z.object({ id: z.number().int().positive(), caption: z.string().trim().max(500).optional(), occurredAt: z.coerce.date(), visibility: z.enum(["pair", "private"]).optional(), favorite: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
+    update: protectedProcedure.input(z.object({ id: z.number().int().positive(), caption: z.string().trim().max(500).optional(), quote: z.string().trim().max(280).optional(), albumId: z.number().int().positive().nullable().optional(), songTitle: z.string().trim().max(160).optional(), songArtist: z.string().trim().max(160).optional(), songUrl: z.string().url().max(1024).optional(), occurredAt: z.coerce.date(), visibility: z.enum(["pair", "private"]).optional(), favorite: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
       const db = await requireDatabase();
       const current = await requireMembership(db, ctx.user.id);
       const { id, ...values } = input;
-      const result = await db.update(moments).set({ caption: values.caption || null, occurredAt: values.occurredAt, ...(values.visibility ? { visibility: values.visibility } : {}), ...(values.favorite === undefined ? {} : { favorite: values.favorite }) }).where(and(eq(moments.id, id), eq(moments.relationshipId, current.relationship.id), eq(moments.createdById, ctx.user.id)));
+      if (values.albumId) {
+        const album = await db.select({ id: galleryAlbums.id }).from(galleryAlbums).where(and(eq(galleryAlbums.id, values.albumId), eq(galleryAlbums.relationshipId, current.relationship.id))).limit(1);
+        if (!album[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That private album is not available." });
+      }
+      const updateSet: Record<string, unknown> = { occurredAt: values.occurredAt };
+      if (values.caption !== undefined) updateSet.caption = values.caption || null;
+      if (values.quote !== undefined) updateSet.quote = values.quote || null;
+      if (values.albumId !== undefined) updateSet.albumId = values.albumId;
+      if (values.songTitle !== undefined) updateSet.songTitle = values.songTitle || null;
+      if (values.songArtist !== undefined) updateSet.songArtist = values.songArtist || null;
+      if (values.songUrl !== undefined) updateSet.songUrl = values.songUrl || null;
+      if (values.visibility !== undefined) updateSet.visibility = values.visibility;
+      if (values.favorite !== undefined) updateSet.favorite = values.favorite;
+      const result = await db.update(moments).set(updateSet).where(and(eq(moments.id, id), eq(moments.relationshipId, current.relationship.id), eq(moments.createdById, ctx.user.id)));
       return { success: result[0]?.affectedRows === 1 };
     }),
     setCover: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -298,8 +333,11 @@ export const orbitRouter = router({
       if (deleted[0]?.affectedRows === 1 && existing[0]?.fileKey) {
         void storageDelete(existing[0].fileKey, existing[0].mediaType === "video" ? "video/mp4" : "image/jpeg").catch((error) => console.warn("[Storage] Failed to remove Cloudinary moment:", error));
       }
-      if (deleted[0]?.affectedRows === 1 && current.relationship.coverMomentId === input.id) {
-        await db.update(relationships).set({ coverMomentId: null }).where(eq(relationships.id, current.relationship.id));
+      if (deleted[0]?.affectedRows === 1 && (current.relationship.coverMomentId === input.id || current.relationship.featuredMomentId === input.id)) {
+        await db.update(relationships).set({
+          ...(current.relationship.coverMomentId === input.id ? { coverMomentId: null } : {}),
+          ...(current.relationship.featuredMomentId === input.id ? { featuredMomentId: null } : {}),
+        }).where(eq(relationships.id, current.relationship.id));
       }
       return { success: deleted[0]?.affectedRows === 1 };
     }),
@@ -428,6 +466,369 @@ export const orbitRouter = router({
       await db.update(relationships).set({ coverMomentId: next.id, coverRotatedAt: new Date() }).where(eq(relationships.id, current.relationship.id));
       return { id: next.id };
     }),
+    updateFeaturedRotation: protectedProcedure.input(z.object({ enabled: z.boolean(), mode: z.enum(["manual", "weekly", "monthly", "anniversary"]) })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      await db.update(relationships).set({ featuredRotationEnabled: input.enabled, featuredRotationMode: input.mode }).where(eq(relationships.id, current.relationship.id));
+      return { success: true };
+    }),
+    rotateFeatured: protectedProcedure.mutation(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const photos = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.relationshipId, current.relationship.id), eq(moments.mediaType, "photo"), eq(moments.visibility, "pair"))).orderBy(desc(moments.occurredAt));
+      if (!photos.length) throw new TRPCError({ code: "NOT_FOUND", message: "Add a shared photo before featuring a memory." });
+      const currentIndex = photos.findIndex((photo) => photo.id === current.relationship.featuredMomentId);
+      const next = photos[(currentIndex + 1 + photos.length) % photos.length] ?? photos[0];
+      await db.update(relationships).set({ featuredMomentId: next.id, featuredRotatedAt: new Date() }).where(eq(relationships.id, current.relationship.id));
+      return { id: next.id };
+    }),
+    setFeatured: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const selected = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.id, input.id), eq(moments.relationshipId, current.relationship.id), eq(moments.mediaType, "photo"), eq(moments.visibility, "pair"))).limit(1);
+      if (!selected[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Only shared photos can be featured for both of us." });
+      await db.update(relationships).set({ featuredMomentId: input.id, featuredRotatedAt: new Date() }).where(eq(relationships.id, current.relationship.id));
+      return { success: true };
+    }),
+  }),
+
+  albums: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const rows = await db.select().from(galleryAlbums).where(eq(galleryAlbums.relationshipId, current.relationship.id)).orderBy(desc(galleryAlbums.createdAt)).limit(50);
+      const momentRows = await db.select({ id: moments.id, albumId: moments.albumId }).from(moments).where(and(eq(moments.relationshipId, current.relationship.id), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id))));
+      const milestoneRows = await db.select({ id: galleryAlbumMilestones.id, albumId: galleryAlbumMilestones.albumId }).from(galleryAlbumMilestones).where(eq(galleryAlbumMilestones.relationshipId, current.relationship.id));
+      return rows.map((album) => ({ album, momentCount: momentRows.filter((moment) => moment.albumId === album.id).length, milestoneCount: milestoneRows.filter((milestone) => milestone.albumId === album.id).length }));
+    }),
+    create: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(120), description: z.string().trim().max(500).optional(), coverMomentId: z.number().int().positive().optional(), startedAt: z.coerce.date().optional(), endedAt: z.coerce.date().optional() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      if (input.startedAt && input.endedAt && input.endedAt.getTime() < input.startedAt.getTime()) throw new TRPCError({ code: "BAD_REQUEST", message: "An album chapter cannot end before it starts." });
+      if (input.coverMomentId) {
+        const cover = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.id, input.coverMomentId), eq(moments.relationshipId, current.relationship.id), eq(moments.mediaType, "photo"), eq(moments.visibility, "pair"))).limit(1);
+        if (!cover[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Choose a shared photo for the album cover." });
+      }
+      const created = await db.insert(galleryAlbums).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, name: input.name, description: input.description || null, coverMomentId: input.coverMomentId ?? null, startedAt: input.startedAt ?? null, endedAt: input.endedAt ?? null }).$returningId();
+      return { id: created[0]?.id };
+    }),
+    update: protectedProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(1).max(120), description: z.string().trim().max(500).optional(), coverMomentId: z.number().int().positive().nullable().optional(), startedAt: z.coerce.date().nullable().optional(), endedAt: z.coerce.date().nullable().optional() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      if (input.startedAt && input.endedAt && input.endedAt.getTime() < input.startedAt.getTime()) throw new TRPCError({ code: "BAD_REQUEST", message: "An album chapter cannot end before it starts." });
+      if (input.coverMomentId) {
+        const cover = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.id, input.coverMomentId), eq(moments.relationshipId, current.relationship.id), eq(moments.mediaType, "photo"), eq(moments.visibility, "pair"))).limit(1);
+        if (!cover[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Choose a shared photo for the album cover." });
+      }
+      const result = await db.update(galleryAlbums).set({ name: input.name, description: input.description || null, ...(input.coverMomentId !== undefined ? { coverMomentId: input.coverMomentId } : {}), ...(input.startedAt !== undefined ? { startedAt: input.startedAt } : {}), ...(input.endedAt !== undefined ? { endedAt: input.endedAt } : {}) }).where(and(eq(galleryAlbums.id, input.id), eq(galleryAlbums.relationshipId, current.relationship.id), eq(galleryAlbums.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const selected = await db.select({ id: galleryAlbums.id }).from(galleryAlbums).where(and(eq(galleryAlbums.id, input.id), eq(galleryAlbums.relationshipId, current.relationship.id), eq(galleryAlbums.createdById, ctx.user.id))).limit(1);
+      if (!selected[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That private album is not available." });
+      await db.update(moments).set({ albumId: null }).where(and(eq(moments.relationshipId, current.relationship.id), eq(moments.albumId, input.id)));
+      await db.delete(galleryAlbumMilestones).where(and(eq(galleryAlbumMilestones.relationshipId, current.relationship.id), eq(galleryAlbumMilestones.albumId, input.id)));
+      await db.delete(galleryAlbums).where(eq(galleryAlbums.id, input.id));
+      return { success: true };
+    }),
+    milestones: router({
+      list: protectedProcedure.input(z.object({ albumId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+        const db = await requireDatabase();
+        const current = await requireMembership(db, ctx.user.id);
+        const album = await db.select({ id: galleryAlbums.id }).from(galleryAlbums).where(and(eq(galleryAlbums.id, input.albumId), eq(galleryAlbums.relationshipId, current.relationship.id))).limit(1);
+        if (!album[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That private album is not available." });
+        return db.select({ milestone: galleryAlbumMilestones, authorName: users.name }).from(galleryAlbumMilestones).innerJoin(users, eq(galleryAlbumMilestones.createdById, users.id)).where(and(eq(galleryAlbumMilestones.albumId, input.albumId), eq(galleryAlbumMilestones.relationshipId, current.relationship.id))).orderBy(desc(galleryAlbumMilestones.milestoneDate)).limit(100);
+      }),
+      create: protectedProcedure.input(z.object({ albumId: z.number().int().positive(), title: z.string().trim().min(1).max(160), note: z.string().trim().max(800).optional(), milestoneDate: z.coerce.date() })).mutation(async ({ ctx, input }) => {
+        const db = await requireDatabase();
+        const current = await requireMembership(db, ctx.user.id);
+        const album = await db.select({ id: galleryAlbums.id }).from(galleryAlbums).where(and(eq(galleryAlbums.id, input.albumId), eq(galleryAlbums.relationshipId, current.relationship.id))).limit(1);
+        if (!album[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That private album is not available." });
+        await db.insert(galleryAlbumMilestones).values({ relationshipId: current.relationship.id, albumId: input.albumId, createdById: ctx.user.id, title: input.title, note: input.note || null, milestoneDate: input.milestoneDate });
+        return { success: true };
+      }),
+      remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const db = await requireDatabase();
+        const current = await requireMembership(db, ctx.user.id);
+        const result = await db.delete(galleryAlbumMilestones).where(and(eq(galleryAlbumMilestones.id, input.id), eq(galleryAlbumMilestones.relationshipId, current.relationship.id), eq(galleryAlbumMilestones.createdById, ctx.user.id)));
+        return { success: result[0]?.affectedRows === 1 };
+      }),
+    }),
+  }),
+
+  surpriseDrops: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const rows = await db.select({ drop: surpriseDrops, recipientName: users.name }).from(surpriseDrops).innerJoin(users, eq(surpriseDrops.recipientId, users.id)).where(eq(surpriseDrops.relationshipId, current.relationship.id)).orderBy(desc(surpriseDrops.revealAt)).limit(100);
+      const now = Date.now();
+      return { received: rows.filter(({ drop }) => drop.recipientId === ctx.user.id && new Date(drop.revealAt).getTime() <= now), sent: rows.filter(({ drop }) => drop.createdById === ctx.user.id), sealedCount: rows.filter(({ drop }) => drop.createdById === ctx.user.id && new Date(drop.revealAt).getTime() > now).length };
+    }),
+    create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(2000), quote: z.string().trim().max(280).optional(), revealAt: z.coerce.date(), momentId: z.number().int().positive().optional() })).mutation(async ({ ctx, input }) => {
+      if (input.revealAt.getTime() <= Date.now()) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a future reveal date." });
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const recipientId = await getPartnerId(db, current.relationship.id, ctx.user.id);
+      if (!recipientId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Link your partner before sending a surprise drop." });
+      if (input.momentId) {
+        const selected = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.id, input.momentId), eq(moments.relationshipId, current.relationship.id), eq(moments.visibility, "pair"))).limit(1);
+        if (!selected[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Choose a shared memory for this surprise drop." });
+      }
+      await db.insert(surpriseDrops).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, recipientId, title: input.title, message: input.message, quote: input.quote || null, revealAt: input.revealAt, momentId: input.momentId ?? null });
+      return { success: true };
+    }),
+    open: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const selected = await db.select({ id: surpriseDrops.id, revealAt: surpriseDrops.revealAt }).from(surpriseDrops).where(and(eq(surpriseDrops.id, input.id), eq(surpriseDrops.relationshipId, current.relationship.id), eq(surpriseDrops.recipientId, ctx.user.id))).limit(1);
+      if (!selected[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That surprise drop is not available." });
+      if (new Date(selected[0].revealAt).getTime() > Date.now()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This surprise drop is still sealed." });
+      await db.update(surpriseDrops).set({ openedAt: new Date() }).where(eq(surpriseDrops.id, input.id));
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const result = await db.delete(surpriseDrops).where(and(eq(surpriseDrops.id, input.id), eq(surpriseDrops.relationshipId, current.relationship.id), eq(surpriseDrops.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+  }),
+
+  places: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      return db.select({ place: relationshipPlaces, authorName: users.name }).from(relationshipPlaces).innerJoin(users, eq(relationshipPlaces.createdById, users.id)).where(and(eq(relationshipPlaces.relationshipId, current.relationship.id), or(eq(relationshipPlaces.visibility, "pair"), eq(relationshipPlaces.createdById, ctx.user.id)))).orderBy(desc(relationshipPlaces.visitedAt), desc(relationshipPlaces.createdAt)).limit(100);
+    }),
+    create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(160), address: z.string().trim().max(500).optional(), latitude: z.number().min(-90).max(90).optional(), longitude: z.number().min(-180).max(180).optional(), visitedAt: z.coerce.date().optional(), note: z.string().trim().max(800).optional(), momentId: z.number().int().positive().optional(), visibility: z.enum(["pair", "private"]).default("pair") })).mutation(async ({ ctx, input }) => {
+      if ((input.latitude === undefined) !== (input.longitude === undefined)) throw new TRPCError({ code: "BAD_REQUEST", message: "Add both latitude and longitude, or leave both blank." });
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      if (input.momentId) {
+        const selected = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.id, input.momentId), eq(moments.relationshipId, current.relationship.id), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)))).limit(1);
+        if (!selected[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That memory is not available for this place." });
+      }
+      await db.insert(relationshipPlaces).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, title: input.title, address: input.address || null, latitude: input.latitude === undefined ? null : input.latitude.toString(), longitude: input.longitude === undefined ? null : input.longitude.toString(), visitedAt: input.visitedAt ?? null, note: input.note || null, momentId: input.momentId ?? null, visibility: input.visibility });
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const result = await db.delete(relationshipPlaces).where(and(eq(relationshipPlaces.id, input.id), eq(relationshipPlaces.relationshipId, current.relationship.id), eq(relationshipPlaces.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+  }),
+
+  anniversary: protectedProcedure.query(async ({ ctx }) => {
+    const db = await requireDatabase();
+    const current = await requireMembership(db, ctx.user.id);
+    const start = new Date(current.relationship.startDate);
+    const now = new Date();
+    const next = new Date(now.getFullYear(), start.getMonth(), start.getDate());
+    if (start.getMonth() === 1 && start.getDate() === 29 && next.getMonth() !== 1) next.setDate(28);
+    if (next.getTime() < now.getTime()) { next.setFullYear(next.getFullYear() + 1); if (start.getMonth() === 1 && start.getDate() === 29 && next.getMonth() !== 1) next.setDate(28); }
+    const yearsTogether = next.getFullYear() - start.getFullYear();
+    const [milestoneRows, favoriteRows, traditionRows] = await Promise.all([
+      db.select({ id: galleryAlbumMilestones.id, title: galleryAlbumMilestones.title, milestoneDate: galleryAlbumMilestones.milestoneDate }).from(galleryAlbumMilestones).where(eq(galleryAlbumMilestones.relationshipId, current.relationship.id)).orderBy(desc(galleryAlbumMilestones.milestoneDate)).limit(6),
+      db.select({ id: moments.id, caption: moments.caption, mediaUrl: moments.mediaUrl, occurredAt: moments.occurredAt }).from(moments).where(and(eq(moments.relationshipId, current.relationship.id), eq(moments.favorite, true), eq(moments.visibility, "pair"))).orderBy(desc(moments.occurredAt)).limit(6),
+      db.select({ id: traditions.id, title: traditions.title, detail: traditions.detail }).from(traditions).where(eq(traditions.relationshipId, current.relationship.id)).orderBy(desc(traditions.createdAt)).limit(6),
+    ]);
+    return { displayName: current.relationship.displayName, startDate: start, nextAnniversary: next, yearsTogether, daysUntil: Math.max(0, Math.ceil((next.getTime() - now.getTime()) / 86_400_000)), milestones: milestoneRows, favorites: favoriteRows, traditions: traditionRows };
+  }),
+
+  capsules: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const rows = await db.select().from(memoryCapsules).where(eq(memoryCapsules.relationshipId, current.relationship.id)).orderBy(desc(memoryCapsules.revealAt)).limit(100);
+      const now = Date.now();
+      return { capsules: rows.filter((capsule) => new Date(capsule.revealAt).getTime() <= now), sealedCount: rows.filter((capsule) => new Date(capsule.revealAt).getTime() > now).length };
+    }),
+    create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(2000), quote: z.string().trim().max(280).optional(), revealAt: z.coerce.date(), momentId: z.number().int().positive().optional(), albumId: z.number().int().positive().optional() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      if (input.revealAt.getTime() <= Date.now()) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose a future reveal date for this capsule." });
+      if (input.momentId) {
+        const moment = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.id, input.momentId), eq(moments.relationshipId, current.relationship.id), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)))).limit(1);
+        if (!moment[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That memory is not available for this capsule." });
+      }
+      if (input.albumId) {
+        const album = await db.select({ id: galleryAlbums.id }).from(galleryAlbums).where(and(eq(galleryAlbums.id, input.albumId), eq(galleryAlbums.relationshipId, current.relationship.id))).limit(1);
+        if (!album[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That private album is not available." });
+      }
+      await db.insert(memoryCapsules).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, title: input.title, message: input.message, quote: input.quote || null, revealAt: input.revealAt, momentId: input.momentId ?? null, albumId: input.albumId ?? null });
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const result = await db.delete(memoryCapsules).where(and(eq(memoryCapsules.id, input.id), eq(memoryCapsules.relationshipId, current.relationship.id), eq(memoryCapsules.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+  }),
+
+  prompts: router({
+    today: protectedProcedure.query(async () => {
+      const promptBank = ["What tiny thing made you feel cared for today?", "What should we remember about this season of us?", "Where would you take us for one quiet afternoon?", "What is one ordinary moment you never want to lose?", "What are you looking forward to sharing next?"];
+      const dayIndex = Math.floor(Date.now() / 86_400_000) % promptBank.length;
+      return { prompt: promptBank[dayIndex] };
+    }),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      return db.select({ response: promptResponses, authorName: users.name }).from(promptResponses).innerJoin(users, eq(promptResponses.createdById, users.id)).where(and(eq(promptResponses.relationshipId, current.relationship.id), or(eq(promptResponses.visibility, "pair"), eq(promptResponses.createdById, ctx.user.id)))).orderBy(desc(promptResponses.createdAt)).limit(100);
+    }),
+    respond: protectedProcedure.input(z.object({ prompt: z.string().trim().min(1).max(280), response: z.string().trim().min(1).max(1200), visibility: z.enum(["pair", "private"]).default("pair") })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      await db.insert(promptResponses).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, prompt: input.prompt, response: input.response, visibility: input.visibility });
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const result = await db.delete(promptResponses).where(and(eq(promptResponses.id, input.id), eq(promptResponses.relationshipId, current.relationship.id), eq(promptResponses.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+  }),
+
+  rituals: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      return db.select({ ritual: rituals, authorName: users.name }).from(rituals).innerJoin(users, eq(rituals.createdById, users.id)).where(eq(rituals.relationshipId, current.relationship.id)).orderBy(desc(rituals.nextDueAt)).limit(100);
+    }),
+    create: protectedProcedure.input(z.object({ name: z.string().trim().min(1).max(160), cadence: z.enum(["daily", "weekly", "monthly"]).default("weekly"), note: z.string().trim().max(500).optional(), nextDueAt: z.coerce.date().optional() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      await db.insert(rituals).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, name: input.name, cadence: input.cadence, note: input.note || null, nextDueAt: input.nextDueAt ?? new Date() });
+      return { success: true };
+    }),
+    complete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const selected = await db.select({ cadence: rituals.cadence }).from(rituals).where(and(eq(rituals.id, input.id), eq(rituals.relationshipId, current.relationship.id))).limit(1);
+      if (!selected[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That ritual is not available." });
+      await db.update(rituals).set({ lastCompletedAt: new Date(), nextDueAt: nextRitualDate(selected[0].cadence) }).where(eq(rituals.id, input.id));
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const result = await db.delete(rituals).where(and(eq(rituals.id, input.id), eq(rituals.relationshipId, current.relationship.id), eq(rituals.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+  }),
+
+  threads: router({
+    list: protectedProcedure.input(z.object({ momentId: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const moment = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.id, input.momentId), eq(moments.relationshipId, current.relationship.id), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)))).limit(1);
+      if (!moment[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That memory is not available." });
+      return db.select({ reply: momentReplies, authorName: users.name }).from(momentReplies).innerJoin(users, eq(momentReplies.createdById, users.id)).where(and(eq(momentReplies.momentId, input.momentId), eq(momentReplies.relationshipId, current.relationship.id))).orderBy(desc(momentReplies.createdAt)).limit(100);
+    }),
+    add: protectedProcedure.input(z.object({ momentId: z.number().int().positive(), body: z.string().trim().min(1).max(1000) })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const moment = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.id, input.momentId), eq(moments.relationshipId, current.relationship.id), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)))).limit(1);
+      if (!moment[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That memory is not available." });
+      await db.insert(momentReplies).values({ relationshipId: current.relationship.id, momentId: input.momentId, createdById: ctx.user.id, body: input.body });
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const result = await db.delete(momentReplies).where(and(eq(momentReplies.id, input.id), eq(momentReplies.relationshipId, current.relationship.id), eq(momentReplies.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+  }),
+
+  comparisons: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      return db.select().from(momentComparisons).where(eq(momentComparisons.relationshipId, current.relationship.id)).orderBy(desc(momentComparisons.createdAt)).limit(50);
+    }),
+    create: protectedProcedure.input(z.object({ olderMomentId: z.number().int().positive(), newerMomentId: z.number().int().positive(), note: z.string().trim().max(500).optional() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      if (input.olderMomentId === input.newerMomentId) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose two different memories for a comparison." });
+      const selected = await db.select({ id: moments.id }).from(moments).where(and(eq(moments.relationshipId, current.relationship.id), or(eq(moments.id, input.olderMomentId), eq(moments.id, input.newerMomentId)), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id))));
+      if (selected.length !== 2) throw new TRPCError({ code: "NOT_FOUND", message: "Both memories must be visible inside this orbit." });
+      await db.insert(momentComparisons).values({ relationshipId: current.relationship.id, olderMomentId: input.olderMomentId, newerMomentId: input.newerMomentId, createdById: ctx.user.id, note: input.note || null });
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const result = await db.delete(momentComparisons).where(and(eq(momentComparisons.id, input.id), eq(momentComparisons.relationshipId, current.relationship.id), eq(momentComparisons.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+  }),
+
+  traditions: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      return db.select({ tradition: traditions, authorName: users.name }).from(traditions).innerJoin(users, eq(traditions.createdById, users.id)).where(eq(traditions.relationshipId, current.relationship.id)).orderBy(desc(traditions.createdAt)).limit(100);
+    }),
+    create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(160), detail: z.string().trim().max(800).optional(), season: z.string().trim().max(80).optional() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      await db.insert(traditions).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, title: input.title, detail: input.detail || null, season: input.season || null });
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const db = await requireDatabase();
+      const current = await requireMembership(db, ctx.user.id);
+      const result = await db.delete(traditions).where(and(eq(traditions.id, input.id), eq(traditions.relationshipId, current.relationship.id), eq(traditions.createdById, ctx.user.id)));
+      return { success: result[0]?.affectedRows === 1 };
+    }),
+  }),
+
+  recap: protectedProcedure.query(async ({ ctx }) => {
+    const db = await requireDatabase();
+    const current = await requireMembership(db, ctx.user.id);
+    const relationshipId = current.relationship.id;
+    const [momentRows, albumRows, milestoneRows, favoriteRows, feelingRows, ritualRows] = await Promise.all([
+      db.select({ occurredAt: moments.occurredAt }).from(moments).where(and(eq(moments.relationshipId, relationshipId), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)))),
+      db.select({ id: galleryAlbums.id }).from(galleryAlbums).where(eq(galleryAlbums.relationshipId, relationshipId)),
+      db.select({ id: galleryAlbumMilestones.id }).from(galleryAlbumMilestones).where(eq(galleryAlbumMilestones.relationshipId, relationshipId)),
+      db.select({ id: moments.id }).from(moments).where(and(eq(moments.relationshipId, relationshipId), eq(moments.favorite, true), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)))),
+      db.select({ mood: feelings.mood }).from(feelings).where(and(eq(feelings.relationshipId, relationshipId), or(eq(feelings.authorId, ctx.user.id), eq(feelings.visibility, "partner")))),
+      db.select({ id: rituals.id }).from(rituals).where(and(eq(rituals.relationshipId, relationshipId), eq(rituals.active, true))),
+    ]);
+    const moodCounts = feelingRows.reduce<Record<string, number>>((counts, row) => { counts[row.mood] = (counts[row.mood] ?? 0) + 1; return counts; }, {});
+    const topMood = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    return { moments: momentRows.length, albums: albumRows.length, milestones: milestoneRows.length, favorites: favoriteRows.length, activeRituals: ritualRows.length, topMood, firstMemoryAt: momentRows.sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime())[0]?.occurredAt ?? null };
+  }),
+
+  search: protectedProcedure.input(z.object({ query: z.string().trim().min(2).max(80) })).query(async ({ ctx, input }) => {
+    const db = await requireDatabase();
+    const current = await requireMembership(db, ctx.user.id);
+    const pattern = `%${input.query}%`;
+    const [momentRows, albumRows, milestoneRows] = await Promise.all([
+      db.select({ moment: moments, authorName: users.name }).from(moments).innerJoin(users, eq(moments.createdById, users.id)).where(and(eq(moments.relationshipId, current.relationship.id), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)), or(like(moments.caption, pattern), like(moments.quote, pattern), like(moments.songTitle, pattern), like(moments.songArtist, pattern)))).orderBy(desc(moments.occurredAt)).limit(50),
+      db.select().from(galleryAlbums).where(and(eq(galleryAlbums.relationshipId, current.relationship.id), like(galleryAlbums.name, pattern))).limit(30),
+      db.select().from(galleryAlbumMilestones).where(and(eq(galleryAlbumMilestones.relationshipId, current.relationship.id), like(galleryAlbumMilestones.title, pattern))).limit(50),
+    ]);
+    return { moments: momentRows, albums: albumRows, milestones: milestoneRows };
+  }),
+
+  consent: protectedProcedure.query(async ({ ctx }) => {
+    const db = await requireDatabase();
+    const current = await requireMembership(db, ctx.user.id);
+    const relationshipId = current.relationship.id;
+    const [momentRows, voiceRows, promptRows, members] = await Promise.all([
+      db.select({ visibility: moments.visibility }).from(moments).where(and(eq(moments.relationshipId, relationshipId), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)))),
+      db.select({ visibility: voiceMemories.visibility }).from(voiceMemories).where(and(eq(voiceMemories.relationshipId, relationshipId), or(eq(voiceMemories.visibility, "pair"), eq(voiceMemories.createdById, ctx.user.id)))),
+      db.select({ visibility: promptResponses.visibility }).from(promptResponses).where(and(eq(promptResponses.relationshipId, relationshipId), or(eq(promptResponses.visibility, "pair"), eq(promptResponses.createdById, ctx.user.id)))),
+      db.select({ userId: relationshipMembers.userId, role: relationshipMembers.role }).from(relationshipMembers).where(eq(relationshipMembers.relationshipId, relationshipId)),
+    ]);
+    return { members: members.length, moments: { shared: momentRows.filter((row) => row.visibility === "pair").length, private: momentRows.filter((row) => row.visibility === "private").length }, voice: { shared: voiceRows.filter((row) => row.visibility === "pair").length, private: voiceRows.filter((row) => row.visibility === "private").length }, prompts: { shared: promptRows.filter((row) => row.visibility === "pair").length, private: promptRows.filter((row) => row.visibility === "private").length } };
   }),
 
   bucket: router({
@@ -551,7 +952,7 @@ export const orbitRouter = router({
     const db = await requireDatabase();
     const current = await requireMembership(db, ctx.user.id);
     const relationshipId = current.relationship.id;
-    const [memoryRows, feelingRows, wellnessRows, bucketRows, timelineRows, countdownRows, voiceRows] = await Promise.all([
+    const [memoryRows, feelingRows, wellnessRows, bucketRows, timelineRows, countdownRows, voiceRows, albumRows, albumMilestoneRows] = await Promise.all([
       db.select().from(moments).where(and(eq(moments.relationshipId, relationshipId), or(eq(moments.visibility, "pair"), eq(moments.createdById, ctx.user.id)))),
       db.select().from(feelings).where(and(eq(feelings.relationshipId, relationshipId), or(eq(feelings.authorId, ctx.user.id), eq(feelings.visibility, "partner")))),
       db.select().from(wellnessEntries).where(and(eq(wellnessEntries.relationshipId, relationshipId), or(eq(wellnessEntries.ownerId, ctx.user.id), eq(wellnessEntries.shareWithPartner, true)))),
@@ -559,8 +960,10 @@ export const orbitRouter = router({
       db.select().from(timelineEvents).where(eq(timelineEvents.relationshipId, relationshipId)),
       db.select().from(countdowns).where(eq(countdowns.relationshipId, relationshipId)),
       db.select().from(voiceMemories).where(and(eq(voiceMemories.relationshipId, relationshipId), or(eq(voiceMemories.visibility, "pair"), eq(voiceMemories.createdById, ctx.user.id)))),
+      db.select().from(galleryAlbums).where(eq(galleryAlbums.relationshipId, relationshipId)),
+      db.select().from(galleryAlbumMilestones).where(eq(galleryAlbumMilestones.relationshipId, relationshipId)),
     ]);
-    return { exportedAt: new Date(), relationship: current.relationship, moments: memoryRows, feelings: feelingRows, wellness: wellnessRows, bucket: bucketRows, timeline: timelineRows, countdowns: countdownRows, voice: voiceRows };
+    return { exportedAt: new Date(), relationship: current.relationship, moments: memoryRows, feelings: feelingRows, wellness: wellnessRows, bucket: bucketRows, timeline: timelineRows, countdowns: countdownRows, voice: voiceRows, albums: albumRows, albumMilestones: albumMilestoneRows };
   }),
 
   notifications: router({

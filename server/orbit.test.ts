@@ -117,6 +117,33 @@ describe("private orbit helpers", () => {
     } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("rejects surprise drops without a future reveal date", async () => {
+    const caller = appRouter.createCaller(authenticatedContext());
+    await expect(caller.orbit.surpriseDrops.create({ title: "Later", message: "A note", revealAt: new Date(Date.now() - 60_000) })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects places with only one coordinate", async () => {
+    const caller = appRouter.createCaller(authenticatedContext());
+    await expect(caller.orbit.places.create({ title: "A place", latitude: 51.5 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects overlong gallery quotes before a storage upload can begin", async () => {
+    const caller = appRouter.createCaller(authenticatedContext());
+    await expect(caller.orbit.moments.create({
+      filename: "memory.jpg",
+      mimeType: "image/jpeg",
+      fileKey: "orbit/1/moments/member-memory.jpg",
+      mediaUrl: "/media/orbit/1/moments/member-memory.jpg",
+      quote: "q".repeat(281),
+      occurredAt: new Date(),
+    } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejects invalid album milestone identifiers before a private lookup", async () => {
+    const caller = appRouter.createCaller(authenticatedContext());
+    await expect(caller.orbit.albums.milestones.list({ albumId: 0 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("rejects malformed owner-edit inputs before a private record can be updated", async () => {
     const caller = appRouter.createCaller(authenticatedContext());
     await expect(caller.orbit.moments.update({ id: 0, caption: "Updated", occurredAt: new Date() })).rejects.toMatchObject({ code: "BAD_REQUEST" });

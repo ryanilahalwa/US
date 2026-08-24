@@ -21,6 +21,10 @@ export const relationships = mysqlTable("relationships", {
   coverRotationMode: mysqlEnum("coverRotationMode", ["manual", "weekly", "monthly", "anniversary"]).notNull().default("manual"),
   coverRotationEnabled: boolean("coverRotationEnabled").notNull().default(false),
   coverRotatedAt: timestamp("coverRotatedAt"),
+  featuredMomentId: int("featuredMomentId"),
+  featuredRotationMode: mysqlEnum("featuredRotationMode", ["manual", "weekly", "monthly", "anniversary"]).notNull().default("manual"),
+  featuredRotationEnabled: boolean("featuredRotationEnabled").notNull().default(false),
+  featuredRotatedAt: timestamp("featuredRotatedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [index("relationships_owner_idx").on(table.ownerId)]);
@@ -50,6 +54,19 @@ export const relationshipInvites = mysqlTable("relationshipInvites", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("relationship_invites_relationship_idx").on(table.relationshipId)]);
 
+export const galleryAlbums = mysqlTable("galleryAlbums", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  name: varchar("name", { length: 120 }).notNull(),
+  description: varchar("description", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  coverMomentId: int("coverMomentId"),
+  startedAt: timestamp("startedAt"),
+  endedAt: timestamp("endedAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("gallery_albums_relationship_idx").on(table.relationshipId, table.createdAt)]);
+
 export const moments = mysqlTable("moments", {
   id: int("id").autoincrement().primaryKey(),
   relationshipId: int("relationshipId").notNull().references(() => relationships.id),
@@ -58,12 +75,123 @@ export const moments = mysqlTable("moments", {
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
   mediaUrl: varchar("mediaUrl", { length: 1024 }).notNull(),
   caption: varchar("caption", { length: 500 }),
+  quote: varchar("quote", { length: 280 }),
+  albumId: int("albumId").references(() => galleryAlbums.id),
+  songTitle: varchar("songTitle", { length: 160 }),
+  songArtist: varchar("songArtist", { length: 160 }),
+  songUrl: varchar("songUrl", { length: 1024 }),
   visibility: mysqlEnum("visibility", ["pair", "private"]).notNull().default("pair"),
   favorite: boolean("favorite").notNull().default(false),
   fileSizeBytes: int("fileSizeBytes"),
   occurredAt: timestamp("occurredAt").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [index("moments_relationship_created_idx").on(table.relationshipId, table.createdAt)]);
+
+export const galleryAlbumMilestones = mysqlTable("galleryAlbumMilestones", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  albumId: int("albumId").notNull().references(() => galleryAlbums.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  title: varchar("title", { length: 160 }).notNull(),
+  note: varchar("note", { length: 800 }),
+  milestoneDate: timestamp("milestoneDate").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("gallery_album_milestones_album_idx").on(table.albumId, table.milestoneDate)]);
+
+export const memoryCapsules = mysqlTable("memoryCapsules", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  title: varchar("title", { length: 160 }).notNull(),
+  message: varchar("message", { length: 2000 }).notNull(),
+  quote: varchar("quote", { length: 280 }),
+  revealAt: timestamp("revealAt").notNull(),
+  momentId: int("momentId").references(() => moments.id),
+  albumId: int("albumId").references(() => galleryAlbums.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("memory_capsules_relationship_reveal_idx").on(table.relationshipId, table.revealAt)]);
+
+export const surpriseDrops = mysqlTable("surpriseDrops", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  recipientId: int("recipientId").notNull().references(() => users.id),
+  title: varchar("title", { length: 160 }).notNull(),
+  message: varchar("message", { length: 2000 }).notNull(),
+  quote: varchar("quote", { length: 280 }),
+  revealAt: timestamp("revealAt").notNull(),
+  openedAt: timestamp("openedAt"),
+  momentId: int("momentId").references(() => moments.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("surprise_drops_recipient_reveal_idx").on(table.recipientId, table.revealAt), index("surprise_drops_relationship_idx").on(table.relationshipId, table.createdAt)]);
+
+export const relationshipPlaces = mysqlTable("relationshipPlaces", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  title: varchar("title", { length: 160 }).notNull(),
+  address: varchar("address", { length: 500 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  visitedAt: timestamp("visitedAt"),
+  note: varchar("note", { length: 800 }),
+  momentId: int("momentId").references(() => moments.id),
+  visibility: mysqlEnum("visibility", ["pair", "private"]).notNull().default("pair"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("relationship_places_relationship_created_idx").on(table.relationshipId, table.createdAt)]);
+
+export const promptResponses = mysqlTable("promptResponses", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  prompt: varchar("prompt", { length: 280 }).notNull(),
+  response: varchar("response", { length: 1200 }).notNull(),
+  visibility: mysqlEnum("visibility", ["pair", "private"]).notNull().default("pair"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("prompt_responses_relationship_created_idx").on(table.relationshipId, table.createdAt)]);
+
+export const rituals = mysqlTable("rituals", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  name: varchar("name", { length: 160 }).notNull(),
+  cadence: mysqlEnum("cadence", ["daily", "weekly", "monthly"]).notNull().default("weekly"),
+  note: varchar("note", { length: 500 }),
+  nextDueAt: timestamp("nextDueAt").notNull(),
+  lastCompletedAt: timestamp("lastCompletedAt"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [index("rituals_relationship_due_idx").on(table.relationshipId, table.nextDueAt)]);
+
+export const momentReplies = mysqlTable("momentReplies", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  momentId: int("momentId").notNull().references(() => moments.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  body: varchar("body", { length: 1000 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("moment_replies_moment_created_idx").on(table.momentId, table.createdAt)]);
+
+export const momentComparisons = mysqlTable("momentComparisons", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  olderMomentId: int("olderMomentId").notNull().references(() => moments.id),
+  newerMomentId: int("newerMomentId").notNull().references(() => moments.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  note: varchar("note", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("moment_comparisons_relationship_idx").on(table.relationshipId, table.createdAt)]);
+
+export const traditions = mysqlTable("traditions", {
+  id: int("id").autoincrement().primaryKey(),
+  relationshipId: int("relationshipId").notNull().references(() => relationships.id),
+  createdById: int("createdById").notNull().references(() => users.id),
+  title: varchar("title", { length: 160 }).notNull(),
+  detail: varchar("detail", { length: 800 }),
+  season: varchar("season", { length: 80 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [index("traditions_relationship_created_idx").on(table.relationshipId, table.createdAt)]);
 
 export const feelings = mysqlTable("feelings", {
   id: int("id").autoincrement().primaryKey(),

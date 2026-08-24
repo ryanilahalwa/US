@@ -3,8 +3,10 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Archive, CalendarClock, Check, Clock3, Download, Heart, ListChecks, Loader2, Mic, MicOff, RotateCw, Sparkles, Star, TrendingUp, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import OrbitChaptersPage from "./OrbitChaptersPage";
+import OrbitKeepsakesPage from "./OrbitKeepsakesPage";
 
-type HubTab = "plans" | "timeline" | "countdowns" | "voice" | "insights";
+type HubTab = "plans" | "timeline" | "countdowns" | "voice" | "insights" | "chapters" | "keepsakes";
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <section className={`glass-card ${className}`}>{children}</section>;
@@ -88,7 +90,7 @@ function InsightsPanel() {
 
 export default function FeatureHubPage() {
   const requestedTab = new URLSearchParams(window.location.search).get("tab");
-  const initialTab: HubTab = requestedTab === "timeline" || requestedTab === "countdowns" || requestedTab === "voice" || requestedTab === "insights" ? requestedTab : "plans";
+  const initialTab: HubTab = requestedTab === "timeline" || requestedTab === "countdowns" || requestedTab === "voice" || requestedTab === "insights" || requestedTab === "chapters" || requestedTab === "keepsakes" ? requestedTab : "plans";
   const [tab, setTab] = useState<HubTab>(initialTab);
   const relationship = trpc.orbit.relationship.get.useQuery();
   const updateRotation = trpc.orbit.relationshipExtras.updateCoverRotation.useMutation();
@@ -105,6 +107,6 @@ export default function FeatureHubPage() {
     const interval = relation.coverRotationMode === "weekly" ? 7 * 86_400_000 : relation.coverRotationMode === "monthly" ? 30 * 86_400_000 : 365 * 86_400_000;
     if (elapsed >= interval) rotate.mutateAsync().then(() => relationship.refetch()).catch(() => undefined);
   }, [relation?.coverRotationEnabled, relation?.coverRotationMode, relation?.coverRotatedAt]);
-  const tabs: [HubTab, string][] = [["plans", "Bucket list"], ["timeline", "Timeline"], ["countdowns", "Countdowns"], ["voice", "Voice"], ["insights", "Insights"]];
-  return <div className="page-grid"><Card className="feature-hero"><div><div className="eyebrow"><Sparkles size={14} /> MORE OF US</div><h3>Small ways to keep choosing each other</h3><p>Plans, milestones, voice memories, insights, and private tools live here without changing the quiet feel of the orbit.</p></div><div className="sphere-controls"><label className="switch-row"><span>Rotate sphere photo</span><input type="checkbox" checked={rotationEnabled} onChange={(event) => setRotationEnabled(event.target.checked)} /><i /></label><select value={rotationMode} onChange={(event) => setRotationMode(event.target.value as typeof rotationMode)}><option value="manual">Manual</option><option value="weekly">When opened weekly</option><option value="monthly">When opened monthly</option><option value="anniversary">On anniversary month</option></select><div className="record-actions"><button className="secondary-button" onClick={saveRotation} disabled={updateRotation.isPending}>Save rotation</button><button className="primary-button" onClick={rotateNow} disabled={rotate.isPending}><RotateCw size={15} /> Rotate now</button></div></div></Card><div className="feature-tabs" role="tablist">{tabs.map(([value, label]) => <button key={value} className={tab === value ? "selected" : ""} onClick={() => setTab(value)}>{label}</button>)}</div>{tab === "plans" && <PlansPanel />}{tab === "timeline" && <TimelinePanel />}{tab === "countdowns" && <CountdownsPanel />}{tab === "voice" && <VoicePanel />}{tab === "insights" && <InsightsPanel />}</div>;
+  const tabs: [HubTab, string][] = [["plans", "Bucket list"], ["timeline", "Timeline"], ["countdowns", "Countdowns"], ["voice", "Voice"], ["insights", "Insights"], ["chapters", "Orbit Chapters"], ["keepsakes", "Keepsakes"]];
+  return <div className="page-grid"><Card className="feature-hero"><div><div className="eyebrow"><Sparkles size={14} /> MORE OF US</div><h3>Small ways to keep choosing each other</h3><p>Plans, milestones, voice memories, insights, and private tools live here without changing the quiet feel of the orbit.</p></div><div className="sphere-controls"><label className="switch-row"><span>Rotate sphere photo</span><input type="checkbox" checked={rotationEnabled} onChange={(event) => setRotationEnabled(event.target.checked)} /><i /></label><select value={rotationMode} onChange={(event) => setRotationMode(event.target.value as typeof rotationMode)}><option value="manual">Manual</option><option value="weekly">When opened weekly</option><option value="monthly">When opened monthly</option><option value="anniversary">On anniversary month</option></select><div className="record-actions"><button className="secondary-button" onClick={saveRotation} disabled={updateRotation.isPending}>Save rotation</button><button className="primary-button" onClick={rotateNow} disabled={rotate.isPending}><RotateCw size={15} /> Rotate now</button></div></div></Card><div className="feature-tabs" role="tablist">{tabs.map(([value, label]) => <button key={value} className={tab === value ? "selected" : ""} onClick={() => setTab(value)}>{label}</button>)}</div>{tab === "plans" && <PlansPanel />}{tab === "timeline" && <TimelinePanel />}{tab === "countdowns" && <CountdownsPanel />}{tab === "voice" && <VoicePanel />}{tab === "insights" && <InsightsPanel />}{tab === "chapters" && <OrbitChaptersPage />}{tab === "keepsakes" && <OrbitKeepsakesPage />}</div>;
 }

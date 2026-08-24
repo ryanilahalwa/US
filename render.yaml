@@ -3,7 +3,7 @@ services:
     name: our-orbit
     runtime: node
     plan: free
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
     startCommand: pnpm drizzle-kit migrate && pnpm start
     healthCheckPath: /api/health
     autoDeploy: true

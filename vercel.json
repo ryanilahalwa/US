@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm drizzle-kit migrate && pnpm build",
+  "outputDirectory": "dist/public",
+  "functions": {
+    "server.ts": {
+      "includeFiles": "dist/public/**",
+      "maxDuration": 60
+    }
+  },
+  "fluid": true
+}

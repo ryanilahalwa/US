@@ -8,7 +8,7 @@ export const ENV = {
   oidcIssuerUrl: process.env.OIDC_ISSUER_URL ?? "",
   oidcClientId: process.env.OIDC_CLIENT_ID ?? "",
   oidcClientSecret: process.env.OIDC_CLIENT_SECRET ?? "",
-  oidcRedirectUri: process.env.OIDC_REDIRECT_URI ?? "",
+  oidcRedirectUri: process.env.OIDC_REDIRECT_URI?.trim() ?? "",
   oidcScopes: process.env.OIDC_SCOPES ?? "openid profile email",
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   isProduction: process.env.NODE_ENV === "production",

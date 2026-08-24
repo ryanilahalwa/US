@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Our Orbit</title>
+  <desc id="desc">A luminous orbit ring around two connected stars</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#211038"/><stop offset="1" stop-color="#10071d"/></linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4a9e3"/><stop offset="1" stop-color="#8e6ae4"/></linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#bg)"/>
+  <ellipse cx="128" cy="128" rx="82" ry="43" fill="none" stroke="url(#ring)" stroke-width="8" transform="rotate(-24 128 128)"/>
+  <circle cx="103" cy="120" r="22" fill="#f8d5ee"/>
+  <circle cx="153" cy="136" r="22" fill="#bfa9f3"/>
+  <path d="M110 99c12-16 29-20 42-12" fill="none" stroke="#fff" stroke-opacity=".65" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="52" cy="73" r="5" fill="#f4a9e3"/><circle cx="204" cy="69" r="4" fill="#bfa9f3"/><circle cx="206" cy="190" r="6" fill="#f4a9e3"/>
+</svg>

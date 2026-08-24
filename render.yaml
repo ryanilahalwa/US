@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: our-orbit
+    runtime: node
+    plan: free
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm drizzle-kit migrate && pnpm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_MODE
+        value: oidc
+      - key: DATABASE_URL
+        sync: false
+      - key: AIVEN_MYSQL_CA
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OIDC_ISSUER_URL
+        sync: false
+      - key: OIDC_CLIENT_ID
+        sync: false
+      - key: OIDC_CLIENT_SECRET
+        sync: false
+      - key: OIDC_REDIRECT_URI
+        sync: false
+      - key: OIDC_SCOPES
+        value: openid profile email
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: VITE_AUTH_MODE
+        value: oidc
+      - key: VITE_APP_ID
+        value: our-orbit
+      - key: VITE_APP_TITLE
+        value: Our Orbit
+      - key: VITE_GOOGLE_MAPS_API_KEY
+        sync: false

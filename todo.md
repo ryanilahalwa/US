@@ -1,0 +1,25 @@
+# Project TODO
+
+- [x] Create a dark responsive design system using deep aubergine, ink-violet, luminous orchid, and rose-silver with accessible contrast and reduced-motion fallbacks.
+- [x] Replace the starter screen with authenticated, multi-page application routes and a responsive navigation shell for desktop, tablet, and mobile.
+- [x] Implement a server-enforced private-pair model with a one-time invite token, partner-link acceptance flow, and authorization checks on every shared record.
+- [x] Add schema migrations and tRPC procedures for relationship settings, linked partner access, relationship start date, and relationship duration calculation.
+- [x] Build an animated 3D-style relationship sphere on the home page that uses an uploaded memory image when available and continuously updates elapsed relationship time.
+- [x] Implement secure private media upload preparation, metadata storage, listing, and deletion for shared Moments photos and videos without saving file bytes in the database.
+- [x] Build the Moments page with upload controls, captions, dates, media filtering, responsive gallery states, and private-pair authorization.
+- [x] Add protected feelings check-ins with mood, short note, supportive response, visibility, validation, and in-app notification creation.
+- [x] Add consent-based location sharing controls, protected last-known location records, browser geolocation capture, partner visibility rules, stop sharing, and an interactive private map display.
+- [x] Add a sensitive wellness calendar with editable cycle, mood, and sexual-wellness entries, partner-sharing toggles, privacy messaging, and calendar views.
+- [x] Add opt-in in-app notification preferences and notifications for memories, feelings check-ins, partner-link events, and selected calendar events.
+- [x] Configure installable PWA assets, manifest, service worker, and mobile-friendly behavior from the same responsive codebase.
+- [x] Add unit tests for protected pair authorization, relationship duration helpers, and validation-sensitive backend flows.
+- [x] Verify loading, empty, error, and consent states; debug TypeScript, build, unit tests, desktop/mobile visual layouts, and core private flows.
+- [x] Create a final project checkpoint and provide Manus publishing plus Vercel deployment guidance.
+- [x] Apply the supplied visual-reference direction: atmospheric aubergine gradients, translucent glass panels, rose-silver controls, and restrained orchid light accents.
+- [x] Diagnose and fix remaining application errors across the private pages and client interaction flows.
+- [x] Add a dedicated period-date entry flow with clear start/end dates, a cycle-length field, and explicit partner-sharing consent.
+- [x] Show shared period dates distinctly in the private calendar while keeping unshared dates visible only to their owner.
+- [x] Add validation tests and responsive checks for the updated period-date sharing flow.
+- [x] Add owner-only edit controls for Moments, feelings check-ins, and wellness/period-date records, preserving existing partner sharing choices.
+- [x] Add keyboard-accessible inline edit forms and update feedback without allowing either partner to overwrite the other person’s personal records.
+- [x] Validate edit authorization and responsive editing flows, then save an updated checkpoint.

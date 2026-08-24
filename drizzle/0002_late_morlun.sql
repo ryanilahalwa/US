@@ -1,0 +1,1 @@
+ALTER TABLE `relationshipMembers` ADD CONSTRAINT `relationship_member_role_unique` UNIQUE(`relationshipId`,`role`);

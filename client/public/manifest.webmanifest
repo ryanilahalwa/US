@@ -1,7 +1,7 @@
 {
   "name": "Our Orbit",
   "short_name": "Our Orbit",
-  "description": "A private, consent-led space for two people.",
+  "description": "A private, consent-led space made for us.",
   "start_url": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],

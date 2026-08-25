@@ -4,7 +4,7 @@ This release keeps the existing private-pair experience and adds a feature hub a
 
 ## Added capabilities
 
-The memory gallery now supports phone gallery selection, camera capture with the browser's permission prompt, HEIC/HEIF images, caption/date search, photo/video/favorites filters, private-versus-pair visibility, one-tap privacy changes, reactions, storage statistics, and repeated sphere-photo changes.
+The memory gallery now supports phone gallery selection, camera capture with the browser's permission prompt, common phone photo/video formats including HEIC/HEIF, caption/date search, photo/video/favorites filters, private-versus-pair visibility, one-tap privacy changes, reactions, storage statistics, and repeated sphere-photo changes. Settings includes a shared sphere-photo uploader and selector; either linked participant can upload a pair-visible photo and make it the sphere image without exposing private-to-one-member media.
 
 The **More of us** area contains a shared bucket list with device-local drafts, a relationship timeline, shared countdowns with in-app due reminders, voice memories recorded after microphone permission, gentle mood and wellness activity summaries, a private JSON export, storage indexing, and sphere rotation preferences.
 
@@ -18,7 +18,7 @@ Countdown reminders and existing wellness reminders are generated as private in-
 
 ## Database migration
 
-The generated migration is `drizzle/0005_great_night_nurse.sql`. It adds sphere rotation metadata, memory privacy/favorites/file-size fields, reactions, bucket items, timeline events, countdowns, and voice memories.
+The current migration chain includes `drizzle/0005_great_night_nurse.sql`, `drizzle/0006_smooth_black_cat.sql`, `drizzle/0007_fat_menace.sql`, and `drizzle/0008_serious_weapon_omega.sql`. Migrations 0006–0008 add gallery quotes and albums, featured-memory rotation, Orbit Chapters, Surprise Drops, Our Places, and Private Anniversary Mode.
 
 Run the migrations with the project's normal deployment command:
 

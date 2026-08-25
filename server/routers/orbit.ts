@@ -37,8 +37,8 @@ import { getRelationshipElapsed } from "../../shared/orbit";
 
 const moods = ["radiant", "calm", "tender", "heavy", "restless", "hopeful"] as const;
 const entryTypes = ["cycle", "mood", "wellness"] as const;
-const imageMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"] as const;
-const videoMimeTypes = ["video/mp4", "video/webm"] as const;
+const imageMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic", "image/heif"] as const;
+const videoMimeTypes = ["video/mp4", "video/webm", "video/quicktime", "video/x-m4v"] as const;
 const audioMimeTypes = ["audio/webm", "audio/mp4", "audio/mpeg", "audio/ogg", "audio/wav", "audio/x-m4a"] as const;
 type Database = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 
@@ -147,7 +147,7 @@ function hashToken(token: string) {
 function fileExtension(filename: string, mimeType: string) {
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, "-").slice(-120);
   if (sanitized.includes(".")) return sanitized;
-  const extensions: Record<string, string> = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif", "image/heic": ".heic", "image/heif": ".heif", "video/mp4": ".mp4", "video/webm": ".webm" };
+  const extensions: Record<string, string> = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif", "image/avif": ".avif", "image/heic": ".heic", "image/heif": ".heif", "video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov", "video/x-m4v": ".m4v" };
   return `${sanitized || "memory"}${extensions[mimeType] ?? ""}`;
 }
 
@@ -271,9 +271,9 @@ export const orbitRouter = router({
         if (!album[0]) throw new TRPCError({ code: "NOT_FOUND", message: "That private album is not available." });
       }
       const mediaType = input.mimeType.startsWith("video/") ? "video" : "photo";
-      await db.insert(moments).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, mediaType, fileKey: input.fileKey, mediaUrl: input.mediaUrl, caption: input.caption || null, quote: input.quote || null, albumId: input.albumId ?? null, songTitle: input.songTitle || null, songArtist: input.songArtist || null, songUrl: input.songUrl || null, visibility: input.visibility, favorite: input.favorite, fileSizeBytes: input.fileSizeBytes ?? null, occurredAt: input.occurredAt });
+      const created = await db.insert(moments).values({ relationshipId: current.relationship.id, createdById: ctx.user.id, mediaType, fileKey: input.fileKey, mediaUrl: input.mediaUrl, caption: input.caption || null, quote: input.quote || null, albumId: input.albumId ?? null, songTitle: input.songTitle || null, songArtist: input.songArtist || null, songUrl: input.songUrl || null, visibility: input.visibility, favorite: input.favorite, fileSizeBytes: input.fileSizeBytes ?? null, occurredAt: input.occurredAt }).$returningId();
       await notifyPartner(db, current.relationship.id, ctx.user.id, "memories", "moment", "A new memory was added", input.caption || input.quote || "A private moment is waiting in your orbit.", "/moments");
-      return { success: true };
+      return { success: true, id: created[0]?.id ?? null };
     }),
     toggleFavorite: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const db = await requireDatabase();
@@ -320,6 +320,7 @@ export const orbitRouter = router({
         eq(moments.id, input.id),
         eq(moments.relationshipId, current.relationship.id),
         eq(moments.mediaType, "photo"),
+        eq(moments.visibility, "pair"),
       )).limit(1);
       if (!selected[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Choose a shared photo to use in the sphere." });
       await db.update(relationships).set({ coverMomentId: input.id }).where(eq(relationships.id, current.relationship.id));

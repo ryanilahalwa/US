@@ -2,6 +2,8 @@
 
 A full-stack memory application for organizing shared memories, chapters, and keepsakes through a structured, responsive web experience.
 
+[![CI](https://github.com/ryanilahalwa/US/actions/workflows/ci.yml/badge.svg)](https://github.com/ryanilahalwa/US/actions/workflows/ci.yml)
+
 > A learning project demonstrating full-stack TypeScript, typed API boundaries, relational data modelling, database migrations, automated testing, and cloud media integration.
 
 ## Recruiter quick scan
